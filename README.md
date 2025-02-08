@@ -15,3 +15,4 @@
 
 - Lista stacji radiowych jest wczytywana z pliku `stacje.txt`.
 - Bot automatycznie rozłącza się z kanału, gdy pozostaje sam.
+test
