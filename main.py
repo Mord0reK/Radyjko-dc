@@ -301,7 +301,18 @@ async def get_youtube_info(url):
         'noplaylist': False,
         'quiet': True,
         'default_search': 'ytsearch',
-        'extract_flat': True, # Dodano opcję extract_flat
+        'extract_flat': True,
+        # Dodatkowe opcje, aby obejść weryfikację
+        'nocheckcertificate': True,
+        'ignoreerrors': True,
+        'no_warnings': True,
+        'cookiefile': None,  # Brak pliku cookie
+        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}},
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'pl-PL,pl;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
     }
     try:
         loop = asyncio.get_event_loop()
@@ -318,14 +329,33 @@ async def get_youtube_info(url):
 async def play_youtube_track(ctx, info):
     """Odtwarza pojedynczy utwór z YouTube."""
     global voice_client, current_song_title, current_song_url, volume
-    stream_url = info['url']
-    ffmpeg_options_adjusted = {
-        'options': '-vn -bufsize 4096 -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
-    }
-
-    print(f"DEBUG: Przekazywany URL do FFmpeg: {stream_url}") # DODANO LOGOWANIE URL
-
+    
+    # Pobieranie bezpośredniego URL audio z info lub ponowne pobranie pełnych informacji
     try:
+        if 'url' not in info or info.get('is_live', False):
+            # Dla transmisji na żywo lub gdy brakuje bezpośredniego URL
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'nocheckcertificate': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                }
+            }
+            loop = asyncio.get_event_loop()
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                detailed_info = await loop.run_in_executor(None, lambda: ydl.extract_info(info['webpage_url'] if 'webpage_url' in info else info['url'], download=False))
+                stream_url = detailed_info['url']
+        else:
+            stream_url = info['url']
+        
+        print(f"DEBUG: Przekazywany URL do FFmpeg: {stream_url}")
+        
+        ffmpeg_options_adjusted = {
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn -bufsize 16M'  # Zwiększony bufor
+        }
+
         if voice_client.is_playing():
             voice_client.stop()
         audio_source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(stream_url, **ffmpeg_options_adjusted), volume=volume)
@@ -336,9 +366,9 @@ async def play_youtube_track(ctx, info):
         if ctx and not ctx.interaction.response.is_done():
             asyncio.run_coroutine_threadsafe(ctx.interaction.followup.send(f"🎶 Teraz grane: **[{current_song_title}]({current_song_url})**"), bot.loop)
     except Exception as e:
+        print(f"DEBUG: Błąd odtwarzania: {e}")
         if ctx and not ctx.interaction.response.is_done():
             asyncio.run_coroutine_threadsafe(ctx.interaction.followup.send(f"❌ Wystąpił błąd podczas odtwarzania: {str(e)}"), bot.loop)
-            print(f"DEBUG: Błąd odtwarzania: {e}") # Dodano logowanie błędu
 
 async def play_next_in_queue(ctx):
     """Odtwarza kolejny utwór w kolejce.
@@ -454,7 +484,17 @@ async def fetch_playlist_batch(playlist_url, start, end):
         'noplaylist': False,
         'quiet': True,
         'playlist_items': f"{start}-{end}",
-        'default_search': 'ytsearch'
+        'default_search': 'ytsearch',
+        # Dodatkowe opcje obejścia ograniczeń
+        'nocheckcertificate': True,
+        'ignoreerrors': True,
+        'no_warnings': True,
+        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}},
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'pl-PL,pl;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
     }
     try:
         loop = asyncio.get_event_loop()
